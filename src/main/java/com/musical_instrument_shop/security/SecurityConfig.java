@@ -16,7 +16,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -24,7 +26,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
-
+//define the security rules, beans, and overall behavior of the application's security.
 
 //securityFilterChain: Configures request authorization
 // (e.g., /api/auth/** is public, all others are private), disables CSRF, sets sessions to STATELESS, and injects the jwtFilter.
@@ -35,7 +37,7 @@ import java.util.List;
 @EnableWebSecurity
 @RequiredArgsConstructor
 @EnableMethodSecurity
-//define the security rules, beans, and overall behavior of the application's security.
+
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
@@ -45,18 +47,31 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable) // Disable CSRF protection (careful in production)
-                .cors(Customizer.withDefaults())
+                .cors(httpSecurityCorsConfigurer -> httpSecurityCorsConfigurer.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(request -> request
                                 .requestMatchers("/api/email/**").permitAll()
                                 .requestMatchers("/api/auth/**").permitAll() // Allow open access to auth endpoints
 //                        .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/api/users/**")
 //                        .hasAuthority("ROLE_ADMIN")  // Only users with role ADMIN can DELETE on /users/**
+                                .requestMatchers(
+                                        "/swagger-ui.html",        // The old Swagger UI HTML (if used)
+                                        "/swagger-ui/**",          // All Swagger UI resources (JS, CSS, etc.)
+                                        "/v3/api-docs/**",         // The API JSON docs
+                                        "/v3/api-docs.yaml",       // YAML version of the docs
+                                        "/swagger-resources/**",   // Swagger resource descriptors
+                                        "/configuration/**"        // Swagger configuration endpoints
+                                ).permitAll()
                                 .anyRequest().authenticated() // All other requests require authentication
                 )
+
                 .httpBasic(Customizer.withDefaults()) // Enable basic auth (useful for testing with Postman)
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Stateless sessions for JWT
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class) // Add JWT filter before Spring Security auth filter
+                .exceptionHandling((exceptions) -> exceptions
+                        .authenticationEntryPoint(myCustomAuthenticationEntryPoint())
+                        .accessDeniedHandler(myCustomAccessDeniedHandler()))
+
                 .build();
     }
 
@@ -65,9 +80,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(List.of(
-                "http://localhost:5173", // React dev server
-                "https://coding-factory.apps.gov.gr",
-                "https://test-coding-factory.apps.gov.gr"
+                "http://localhost:5173" // React dev server
         ));
         configuration.setAllowedMethods(List.of("*")); // allow all HTTP methods
         configuration.setAllowedHeaders(List.of("*")); // allow all headers
@@ -86,26 +99,25 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 
-//    @Bean
-//    public AuthenticationProvider authenticationProvider(UserDetailsService userDetailsService,
-//                                                         PasswordEncoder passwordEncoder) {
-//        // Sets up DaoAuthenticationProvider, which is an AuthenticationProvider
-//        // that retrieves user details from the UserDetailsService and uses the PasswordEncoder to verify passwords.
-//        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-//
-//        // Inject the UserDetailsService (your custom user lookup)
-//        authProvider.setUserDetailsService(userDetailsService);
-//
-//        // Inject the PasswordEncoder to hash and verify passwords securely
-//        authProvider.setPasswordEncoder(passwordEncoder);
-//
-//        return authProvider;
-//    }
+
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         // Returns a BCryptPasswordEncoder with strength 12
         // BCrypt is a strong hashing algorithm recommended for storing passwords securely.
         return new BCryptPasswordEncoder(12);
+    }
+    @Bean
+    public AccessDeniedHandler myCustomAccessDeniedHandler() {
+        return new CustomAccessDeniedHandler();
+    }
+
+    // AuthenticationEntryPoint (Handles 401 Unauthorized)
+    // Triggered when an unauthenticated user tries to access a secured resource.
+    // Default behavior: Redirects to login page (for web apps) or returns HTTP 401 (for APIs).
+    // Want to return to a structured JSON response for APIs:
+    @Bean
+    public AuthenticationEntryPoint myCustomAuthenticationEntryPoint() {
+        return new CustomAuthenticationEntryPoint();
     }
 }
