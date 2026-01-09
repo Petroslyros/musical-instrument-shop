@@ -19,7 +19,7 @@ import java.util.Set;
 @AllArgsConstructor
 @Entity
 @Table(name = "orders")
-public class Order {
+public class Order extends AbstractEntity {
 
 
     @Id

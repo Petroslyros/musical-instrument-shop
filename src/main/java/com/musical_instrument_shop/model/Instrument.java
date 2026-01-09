@@ -18,7 +18,7 @@ import java.math.BigDecimal;
         @Index(name = "idx_instrument_name", columnList = "name"),
         @Index(name = "idx_instrument_price", columnList = "price")
 })
-public class Instrument {
+public class Instrument extends AbstractEntity {
 
 
     @Id
